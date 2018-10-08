@@ -323,13 +323,13 @@ void TMemoryBuffer::computeRead(uint32_t len, uint8_t** out_start, uint32_t* out
 }
 
 uint32_t TMemoryBuffer::readSlow(uint8_t* buf, uint32_t len) {
-  uint8_t* start;
-  uint32_t give;
-  computeRead(len, &start, &give);
+  uint8_t* start;//缓存读取开始地址
+  uint32_t give;//缓存可以读取的长度
+  computeRead(len, &start, &give);//计算缓存中可以读取的开始地址和长度
 
+  // 把缓存中的数据拷贝到提供的buf中
   // Copy into the provided buffer.
   memcpy(buf, start, give);
-
   return give;
 }
 
