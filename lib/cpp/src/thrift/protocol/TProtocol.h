@@ -215,6 +215,20 @@ static const uint32_t DEFAULT_RECURSION_LIMIT = 64;
  * when parsing an input XML stream, reading should be batched rather than
  * looking ahead character by character for a close tag).
  *
+ * TProtocol的主要任务是把TTransport中的字节流转换为数据流。
+ * 在TProtocol这一层就会出现具有数据类型的数据，如整型、浮点数、字符串和结构体等。
+ * TProtocol中数据虽然有了数据类型，但TProtocol只会按照指定类型将数据读出和写入，而对于数据的真正用途，
+ * 需要在thrift自动生成的server和client中处理。
+
+thrift可以让用户选择客户端与服务端之间传输通信协议的类别，
+在传输协议上总体划分为文本和二进制传输协议，以节约带宽，提高传输效率，
+一般情况下使用二进制类型的传输协议为大多数。常用协议有以下几种：
+TBinaryProtocl：二进制编码格式
+TCompactProtocol：高效率的、密集的二进制编码格式
+TJSONProtocol：使用JSON的数据编码协议进行数据传输
+TSimpleJSONProtocol：提供JSON只写协议，生成的文件很容易通过脚本语言解析
+TDebugProtocol：简单易懂的文本格式，以便于debug
+
  */
 class TProtocol {
 public:

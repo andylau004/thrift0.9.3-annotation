@@ -310,27 +310,28 @@ uint32_t TFramedTransport::readEnd() {
 
 void TMemoryBuffer::computeRead(uint32_t len, uint8_t** out_start, uint32_t* out_give) {
   // Correct rBound_ so we can use the fast path in the future.
-  rBound_ = wBase_;
+  rBound_ = wBase_;//更新读取的边界，写的起始地址就是读取的最大限制地址
 
-  // Decide how much to give.
+  //取小者，因为数据可能不够，可利用的读长度就是写的起始地址减去读的起始地址
   uint32_t give = (std::min)(len, available_read());
 
-  *out_start = rBase_;
-  *out_give = give;
+  *out_start = rBase_;//返回的读起始地址
+  *out_give = give;//返回读取的可用长度
 
   // Preincrement rBase_ so the caller doesn't have to.
-  rBase_ += give;
+  rBase_ += give;//更新读取的起始地址
 }
 
 uint32_t TMemoryBuffer::readSlow(uint8_t* buf, uint32_t len) {
   uint8_t* start;//缓存读取开始地址
   uint32_t give;//缓存可以读取的长度
+  //在读取数据以前先要计算可以读取的开始地址和长度（因为写函数会更新缓存中的数据），
+  //这个功能是函数computeRead实现
   computeRead(len, &start, &give);//计算缓存中可以读取的开始地址和长度
 
   // 把缓存中的数据拷贝到提供的buf中
-  // Copy into the provided buffer.
   memcpy(buf, start, give);
-  return give;
+  return give;//返回实际读取到的数据，可能小于len
 }
 
 uint32_t TMemoryBuffer::readAppendToString(std::string& str, uint32_t len) {
@@ -356,18 +357,18 @@ void TMemoryBuffer::ensureCanWrite(uint32_t len) {
     return;
   }
 
-  if (!owner_) {
-    throw TTransportException("Insufficient space in external MemoryBuffer");
+  if (!owner_) {//检查内存是否自己拥有
+    throw TTransportException("Insufficient space in external MemoryBuffer");//抛出不是自己拥有不能写入
   }
 
-  // Grow the buffer as necessary.
+  // 根据需要增加缓存空间.
   uint32_t new_size = bufferSize_;
-  while (len > avail) {
+  while (len > avail) {// 循环增加，每次都是上次的二倍大小,直到满足要求为止
     new_size = new_size > 0 ? new_size * 2 : 1;
-    avail = available_write() + (new_size - bufferSize_);
+    avail = available_write() + (new_size - bufferSize_);// 计算新的可利用空间：新-老+以前可利用
   }
 
-  // Allocate into a new pointer so we don't bork ours if it fails.
+  // 重新按照新大小分配缓存空间
   uint8_t* new_buffer = static_cast<uint8_t*>(std::realloc(buffer_, new_size));
   if (new_buffer == NULL) {
     throw std::bad_alloc();
@@ -378,15 +379,15 @@ void TMemoryBuffer::ensureCanWrite(uint32_t len) {
   wBase_ = new_buffer + (wBase_ - buffer_);
   wBound_ = new_buffer + new_size;
   buffer_ = new_buffer;
-  bufferSize_ = new_size;
+  bufferSize_ = new_size;//重置缓存大小
 }
 
 void TMemoryBuffer::writeSlow(const uint8_t* buf, uint32_t len) {
-  ensureCanWrite(len);
+  ensureCanWrite(len);// 确保能够写入
 
   // Copy into the buffer and increment wBase_.
-  memcpy(wBase_, buf, len);
-  wBase_ += len;
+  memcpy(wBase_, buf, len);// 拷贝数据到写缓存的基地址
+  wBase_ += len;// 更新写缓存的基地址
 }
 
 void TMemoryBuffer::wroteBytes(uint32_t len) {

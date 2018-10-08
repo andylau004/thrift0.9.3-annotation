@@ -95,6 +95,20 @@ protected:
 /**
  * Thrift server.
  *
+ *  thrift核心库提供了一个TServer抽象类。
+
+    TServer在thrift框架中的主要任务是接收client请求，并转发到某个processor上进行请求处理。针对不同的访问规模，thrift提供了不同TServer模型。thrift目前支持的server模型包括：
+
+    TSimpleServer：使用阻塞io的单线程服务器，主要用于调试。
+    TThreadedServer：使用阻塞io的多线程服务器，每一个请求都在一个线程中处理，并发访问情况下会有很多线程同时运行。
+    TThreadPoolServer：使用阻塞io的多线程服务器，使用线程池管理处理线程。
+    TNonBlockingServer：使用非阻塞io的多线程服务器，使用少量线程既可以完成大并发量的请求响应，必须使用TFramedTransport。
+    
+    TServer对象通常如下工作：
+    使用TServerTransport获得一个TTransport。
+    使用TTransportFactory，可选地将原始传输转换为一个合适的应用传输。
+    调用TProtocolFactory，为TTransport创建一个输入和输出。
+    调用TProcessor对象的process方法。
  */
 class TServer : public concurrency::Runnable {
 public:
