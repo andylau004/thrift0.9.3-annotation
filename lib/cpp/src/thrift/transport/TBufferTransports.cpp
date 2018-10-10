@@ -28,21 +28,28 @@ namespace apache {
 namespace thrift {
 namespace transport {
 
+// 慢读函数主要考虑的问题就是缓存中还有一部分数据，
+// 但是不够我们需要读取的长度；还有比较麻烦的情况是虽然现在缓存中没有数据，
+// 但是我们从下层传输去读，读取的长度可能大于、小于或等于我们需要读取的长度，所以需要考虑各种情况。
 uint32_t TBufferedTransport::readSlow(uint8_t* buf, uint32_t len) {
-  uint32_t have = static_cast<uint32_t>(rBound_ - rBase_);
+  uint32_t have = static_cast<uint32_t>(rBound_ - rBase_);//计算还有多少数据在缓存中
 
   // We should only take the slow path if we can't satisfy the read
   // with the data already in the buffer.
+  // 如果读取缓存中已经存在的数据不能满足我们，我们（也仅仅在这种情况下）应该才从慢路径读数据。
   assert(have < len);
 
   // If we have some data in the buffer, copy it out and return it.
   // We have to return it without attempting to read more, since we aren't
   // guaranteed that the underlying transport actually has more data, so
   // attempting to read from it could block.
+  // 如果我们有一些数据在缓存，拷贝出来并返回它
+  // 我们不得不返回它而去尝试读更多的数据，因为我们不能保证
+  // 下层传输实际有更多的数据， 因此尝试阻塞式读取它。
   if (have > 0) {
-    memcpy(buf, rBase_, have);
-    setReadBuffer(rBuf_.get(), 0);
-    return have;
+    memcpy(buf, rBase_, have);//拷贝数据
+    setReadBuffer(rBuf_.get(), 0);//设置读缓存，基类实现该函数
+    return have;//返回缓存中已经存在的不完整数据
   }
 
   // No data is available in our buffer.
@@ -50,21 +57,31 @@ uint32_t TBufferedTransport::readSlow(uint8_t* buf, uint32_t len) {
   // Note that this makes a lot of sense if len < rBufSize_
   // and almost no sense otherwise.  TODO(dreiss): Fix that
   // case (possibly including some readv hotness).
-  setReadBuffer(rBuf_.get(), transport_->read(rBuf_.get(), rBufSize_));
+  // 在我们的缓存中没有更多的数据可用。从下层传输得到更多以达到buffer的大小。
+  // 注意如果len小于rBufSize_可能会产生多种场景否则几乎是没有意义的。
+  setReadBuffer(rBuf_.get(), transport_->read(rBuf_.get(), rBufSize_));//读取数据并设置读缓存
 
   // Hand over whatever we have.
+  // 处理我们已有的数据
   uint32_t give = (std::min)(len, static_cast<uint32_t>(rBound_ - rBase_));
   memcpy(buf, rBase_, give);
   rBase_ += give;
-
   return give;
 }
 
+// 慢写函数也有棘手的问题，就是我们应该拷贝我们的数据到我们的内部缓存并且从那儿发送出去，
+// 或者我们应该仅仅用一次系统调用把当前内部写缓存区的内容写出去，
+// 然后再用一次系统调用把我们当前需要写入长度为len的数据再次写入出去。
+// 如果当前缓存区的数据加上我们这次需要写入数据的长度至少是我们缓存区长度的两倍，
+// 我们将不得不至少调用两次系统调用（缓存区为空时有可能例外），那么我们就不拷贝了。
+// 否则我们就是按顺序递加的。具体实现分情况处理，最后我们在看看慢借函数的实现，借相关函数主要是为了实现可变长度编码。
 void TBufferedTransport::writeSlow(const uint8_t* buf, uint32_t len) {
-  uint32_t have_bytes = static_cast<uint32_t>(wBase_ - wBuf_.get());
-  uint32_t space = static_cast<uint32_t>(wBound_ - wBase_);
+  uint32_t have_bytes = static_cast<uint32_t>(wBase_ - wBuf_.get());//计算写缓存区中已有的字节数
+  uint32_t space = static_cast<uint32_t>(wBound_ - wBase_);//计算剩余写缓存空间
+ 
   // We should only take the slow path if we can't accommodate the write
   // with the free space already in the buffer.
+  // 如果在缓存区的空闲空间不能容纳我们的数据，我们采用慢路径写（仅仅）
   assert(wBound_ - wBase_ < static_cast<ptrdiff_t>(len));
 
   // Now here's the tricky question: should we copy data from buf into our
@@ -86,26 +103,27 @@ void TBufferedTransport::writeSlow(const uint8_t* buf, uint32_t len) {
   // The case where we have to do two syscalls.
   // This case also covers the case where the buffer is empty,
   // but it is clearer (I think) to think of it as two separate cases.
+  //已有数据加上需要写入的数据是否大于2倍写缓存区或者缓存区为空
   if ((have_bytes + len >= 2 * wBufSize_) || (have_bytes == 0)) {
     // TODO(dreiss): writev
-    if (have_bytes > 0) {
-      transport_->write(wBuf_.get(), have_bytes);
+    if (have_bytes > 0) {//缓存大于0且加上需要再写入数据的长度大于2倍缓存区
+      transport_->write(wBuf_.get(), have_bytes);//先将已有数据写入下层传输
     }
-    transport_->write(buf, len);
-    wBase_ = wBuf_.get();
+    transport_->write(buf, len);//写入这次的len长度的数据
+    wBase_ = wBuf_.get();//重新得到写缓存的基地址
     return;
   }
 
   // Fill up our internal buffer for a write.
-  memcpy(wBase_, buf, space);
+  memcpy(wBase_, buf, space);//填充我们的内部缓存区为了写
   buf += space;
   len -= space;
-  transport_->write(wBuf_.get(), wBufSize_);
+  transport_->write(wBuf_.get(), wBufSize_);//写入下层传输
 
   // Copy the rest into our buffer.
   assert(len < wBufSize_);
-  memcpy(wBuf_.get(), buf, len);
-  wBase_ = wBuf_.get() + len;
+  memcpy(wBuf_.get(), buf, len);//拷贝剩余的数据到我们的缓存
+  wBase_ = wBuf_.get() + len;//重新得到写缓存基地址
   return;
 }
 
@@ -324,7 +342,8 @@ void TMemoryBuffer::computeRead(uint32_t len, uint8_t** out_start, uint32_t* out
 
 uint32_t TMemoryBuffer::readSlow(uint8_t* buf, uint32_t len) {
   uint8_t* start;//缓存读取开始地址
-  uint32_t give;//缓存可以读取的长度
+  uint32_t give; //缓存可以读取的长度
+
   //在读取数据以前先要计算可以读取的开始地址和长度（因为写函数会更新缓存中的数据），
   //这个功能是函数computeRead实现
   computeRead(len, &start, &give);//计算缓存中可以读取的开始地址和长度

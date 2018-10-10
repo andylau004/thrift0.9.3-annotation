@@ -63,12 +63,12 @@ public:
    */
   uint32_t read(uint8_t* buf, uint32_t len) {
     uint8_t* new_rBase = rBase_ + len;
-    if (TDB_LIKELY(new_rBase <= rBound_)) {
+    if (TDB_LIKELY(new_rBase <= rBound_)) {//判断缓存是否有足够的数据可读，采用了分支预测技术
       std::memcpy(buf, rBase_, len);
       rBase_ = new_rBase;
-      return len;
+      return len;//返回读取的长度
     }
-    return readSlow(buf, len);
+    return readSlow(buf, len);//如果缓存已经不能够满足读取长度需要就执行慢读
   }
 
   /**
@@ -220,10 +220,10 @@ public:
   bool isOpen() { return transport_->isOpen(); }
 
   bool peek() {
-    if (rBase_ == rBound_) {
-      setReadBuffer(rBuf_.get(), transport_->read(rBuf_.get(), rBufSize_));
+    if (rBase_ == rBound_) {//判断读的基地址与读边界是否重合了，也就是已经读取完毕
+      setReadBuffer(rBuf_.get(), transport_->read(rBuf_.get(), rBufSize_));//是：重新读取底层来的数据
     }
-    return (rBound_ > rBase_);
+    return (rBound_ > rBase_);//边界大于基地址就是有未决状态数据
   }
 
   void close() {

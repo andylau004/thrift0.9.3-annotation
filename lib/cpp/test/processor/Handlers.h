@@ -202,6 +202,7 @@ public:
 
   virtual void* createContext(boost::shared_ptr<protocol::TProtocol> input,
                               boost::shared_ptr<protocol::TProtocol> output) {
+                                
     ConnContext* context = new ConnContext(input, output, nextId_);
     ++nextId_;
     log_->append(EventLog::ET_CONN_CREATED, context->id, 0);

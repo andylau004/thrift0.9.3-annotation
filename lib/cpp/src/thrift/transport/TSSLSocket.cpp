@@ -96,7 +96,8 @@ void initializeOpenSSL() {
   SSL_library_init();
   SSL_load_error_strings();
   // static locking
-  mutexes = boost::shared_array<Mutex>(new Mutex[ ::CRYPTO_num_locks()]);
+  // mutexes = boost::shared_array<Mutex>(new Mutex[ ::CRYPTO_num_locks()]);
+  mutexes = boost::shared_array<Mutex>(new Mutex[ CRYPTO_num_locks() ]);
   if (mutexes == NULL) {
     throw TTransportException(TTransportException::INTERNAL_ERROR,
                               "initializeOpenSSL() failed, "
@@ -140,7 +141,7 @@ SSLContext::SSLContext(const SSLProtocol& protocol) {
   if (protocol == SSLTLS) {
     ctx_ = SSL_CTX_new(SSLv23_method());
   } else if (protocol == SSLv3) {
-    ctx_ = SSL_CTX_new(SSLv3_method());
+    // ctx_ = SSL_CTX_new(SSLv3_method());
   } else if (protocol == TLSv1_0) {
     ctx_ = SSL_CTX_new(TLSv1_method());
   } else if (protocol == TLSv1_1) {

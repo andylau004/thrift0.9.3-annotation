@@ -23288,8 +23288,13 @@ fi
 if test "$have_cpp" = "yes" ; then
 # mingw toolchain used to build "Thrift Compiler for Windows"
 # does not support libcrypto, so we just check if we building the cpp library
+
+echo $LIBS
+
 { $as_echo "$as_me:${as_lineno-$LINENO}: checking for BN_init in -lcrypto" >&5
 $as_echo_n "checking for BN_init in -lcrypto... " >&6; }
+
+
 if ${ac_cv_lib_crypto_BN_init+:} false; then :
   $as_echo_n "(cached) " >&6
 else
@@ -23301,17 +23306,17 @@ cat confdefs.h - <<_ACEOF >conftest.$ac_ext
 /* Override any GCC internal prototype to avoid an error.
    Use char because int might match the return type of a GCC
    builtin and then its argument prototype would still apply.  */
-#ifdef __cplusplus
-extern "C"
-#endif
-char BN_init ();
-int
-main ()
-{
-return BN_init ();
-  ;
-  return 0;
-}
+##ifdef __cplusplus
+#extern "C"
+##endif
+#char BN_init ();
+#int
+#main ()
+#{
+#return BN_init ();
+#  ;
+#  return 0;
+#}
 _ACEOF
 if ac_fn_cxx_try_link "$LINENO"; then :
   ac_cv_lib_crypto_BN_init=yes
@@ -23369,8 +23374,8 @@ else
 fi
 
 else
-  as_fn_error $? "\"Error: libcrypto required.\"" "$LINENO" 5
-
+ echo $LIBS;
+#  as_fn_error $? "\"Error: libcrypto required.\"" "$LINENO" 5
 fi
 
 fi

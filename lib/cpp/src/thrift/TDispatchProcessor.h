@@ -85,6 +85,12 @@ protected:
 
   /**
    * dispatchCall() methods must be implemented by subclasses
+   * 1. dispatchCall 这个函数是个虚函数，而看 TDispatchProcessor 源码就可以明白，
+   * 这个函数是被供 TDispatchProcessor 类中的虚函数 process 来调用的。
+   * 这里是用了多态是进行动态调用的。 这样的用法其实很常见，因为所需用到的场景非常多，
+   * 你在父类，也就是 TDispatchProcessor 这个类中暴漏给外界的接口是 process ， 
+   * 而具体的实现需要在不同子类里面进行不同的实现， 所以定义出 dispatchCall 这个纯虚函数 强制子类实现之。 
+   * 而父类在 process 函数中适当的调用 dispatchCall 即可。
    */
   virtual bool dispatchCall(apache::thrift::protocol::TProtocol* in,
                             apache::thrift::protocol::TProtocol* out,

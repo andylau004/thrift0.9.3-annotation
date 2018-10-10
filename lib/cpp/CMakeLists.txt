@@ -41,6 +41,10 @@ set( thriftcpp_SOURCES
    src/thrift/concurrency/TimerManager.cpp
    src/thrift/concurrency/Util.cpp
    src/thrift/processor/PeekProcessor.cpp
+
+   src/thrift/protocol/TBinaryProtocol.tcc
+   src/thrift/protocol/TCompactProtocol.tcc
+
    src/thrift/protocol/TBase64Utils.cpp
    src/thrift/protocol/TDebugProtocol.cpp
    src/thrift/protocol/TJSONProtocol.cpp

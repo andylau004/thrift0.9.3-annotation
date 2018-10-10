@@ -17,6 +17,9 @@
  * under the License.
  */
 
+#include <iostream>
+#include <sstream>
+
 #include <thrift/server/TConnectedClient.h>
 
 namespace apache {
@@ -49,7 +52,10 @@ TConnectedClient::~TConnectedClient() {
 }
 
 void TConnectedClient::run() {
+  std::cout << __FILE__ << ":" << __LINE__ << "    run" << std::endl;
+
   if (eventHandler_) {
+    std::cout << __FILE__ << ":" << __LINE__ << "    createContext" << std::endl;
     opaqueContext_ = eventHandler_->createContext(inputProtocol_, outputProtocol_);
   }
 
