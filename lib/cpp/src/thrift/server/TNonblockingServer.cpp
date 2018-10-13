@@ -366,8 +366,8 @@ public:
                     serverEventHandler_->processContext(connectionContext_, connection_->getTSocket());
                 }
                 // 回调
-                if (!processor_->process(input_, output_, connectionContext_)
-                        || !input_->getTransport()->peek()) {
+                if (!processor_->process(input_, output_, connectionContext_) ||
+                    !input_->getTransport()->peek()) {
                     break;
                 }
             }
@@ -391,6 +391,7 @@ public:
         // 回调完后通知，
         // 从工作线程重回到IO线程
         // connection_的指针地址将通过管道传给工作线程
+        // workpool thread 任务线程处理完成后会调用notifyIOThread通知connection对应的iothead来发送结果给客户端
         if (!connection_->notifyIOThread()) {
             GlobalOutput.printf("TNonblockingServer: failed to notifyIOThread, closing.");
             connection_->close();
@@ -435,11 +436,11 @@ void TNonblockingServer::TConnection::init(THRIFT_SOCKET socket,
     callsForResize_ = 0;
 
     // get input/transports
-    factoryInputTransport_ = server_->getInputTransportFactory()->getTransport(inputTransport_);
+    factoryInputTransport_  = server_->getInputTransportFactory()->getTransport(inputTransport_);
     factoryOutputTransport_ = server_->getOutputTransportFactory()->getTransport(outputTransport_);
 
     // Create protocol
-    inputProtocol_ = server_->getInputProtocolFactory()->getProtocol(factoryInputTransport_);
+    inputProtocol_  = server_->getInputProtocolFactory()->getProtocol(factoryInputTransport_);
     outputProtocol_ = server_->getOutputProtocolFactory()->getProtocol(factoryOutputTransport_);
 
     // Set up for any server event handler
@@ -469,17 +470,16 @@ void TNonblockingServer::TConnection::workSocket() {
 
         // if we've already received some bytes we kept them here
         framing.size = readWant_;
-        // determine size of this frame
-        try {
-        // Read from the socket
-        fetch = tSocket_->read(&framing.buf[readBufferPos_],
-                               uint32_t(sizeof(framing.size) - readBufferPos_));
-        if (fetch == 0) {
-            // Whenever we get here it means a remote disconnect
-            close();
-            return;
-        }
-        readBufferPos_ += fetch;
+
+        try {// determine size of this frame
+            fetch = tSocket_->read(&framing.buf[readBufferPos_],
+                                   uint32_t(sizeof(framing.size) - readBufferPos_));
+            if (fetch == 0) {
+                // Whenever we get here it means a remote disconnect
+                close();
+                return;
+            }
+            readBufferPos_ += fetch;
         } catch (TTransportException& te) {
             GlobalOutput.printf("TConnection::workSocket(): %s", te.what());
             close();
@@ -596,12 +596,14 @@ void TNonblockingServer::TConnection::transition() {
     // APP_READ_REQUEST 状态发生在IO线程中，addTask()会将任务转交给或工作线程，然后由工作线程回调服务端的函数。
     // 当 TConnetion 的 app状态 进入 APP_READ_REQUEST 之后
     // 读取完请求数据之后，则将任务包装好扔进线程池。 并且将状态改变(APP_READ_REQUEST -> APP_WAIT_TASK)：
-    // 当connection的一个请求数据read完成时, 封装成任务task交由workpool  thread 的线程池处理
+    // 当connection的一个请求数据read完成时, 封装成任务task交由workpool thread 的线程池处理
+    // 3 --
     case APP_READ_REQUEST:
         // We are done reading the request, package the read buffer into transport
         // and get back some data from the dispatch function
         inputTransport_->resetBuffer(readBuffer_, readBufferPos_);
         outputTransport_->resetBuffer();
+
         // Prepend four bytes of blank space to the buffer so we can
         // write the frame size there later.
         outputTransport_->getWritePtr(4);
@@ -609,18 +611,17 @@ void TNonblockingServer::TConnection::transition() {
 
         server_->incrementActiveProcessors();
 
-        if (server_->isThreadPoolProcessing()) {
+        if (server_->isThreadPoolProcessing()) {// 是否是工作线程池模式
             // We are setting up a Task to do this work and we will wait on it
             std::cout << __FILE__ << ":" << __LINE__ << "    server_->isThreadPoolProcessing == true" << std::endl;
 
             // Create task and dispatch to the thread manager
             boost::shared_ptr<Runnable> task = boost::shared_ptr<Runnable>(
                         new Task(processor_, inputProtocol_, outputProtocol_, this));
+
             // The application is now waiting on the task to finish
             appState_ = APP_WAIT_TASK;
-
-            try {
-                // server_为TNonblockingServer 回调交给工作线程，IO线程不做这个工作
+            try {// server_为TNonblockingServer回调交给工作线程，IO线程不做这个工作
                 server_->addTask(task);
             } catch (IllegalStateException& ise) {
                 // The ThreadManager is not ready to handle any more tasks (it's probably shutting down).
@@ -676,6 +677,7 @@ void TNonblockingServer::TConnection::transition() {
 
         // Intentionally fall through here, the call to process has written into
         // the writeBuffer_
+        // 4 --
     case APP_WAIT_TASK:
         // We have now finished processing a task and the result has been written
         // into the outputTransport_, so we grab its contents and place them into
@@ -711,6 +713,7 @@ void TNonblockingServer::TConnection::transition() {
         // right back into the read frame header state
         goto LABEL_APP_INIT;
 
+    // 5 --
     case APP_SEND_RESULT:
         // it's now safe to perform buffer size housekeeping.
         if (writeBufferSize_ > largestWriteBufferSize_) {
@@ -726,7 +729,7 @@ void TNonblockingServer::TConnection::transition() {
         // N.B.: We also intentionally fall through here into the INIT state!
 
 LABEL_APP_INIT:
-    case APP_INIT:
+    case APP_INIT:// 1 -- 初始状态
 
         // Clear write buffer variables
         writeBuffer_ = NULL;
@@ -735,7 +738,7 @@ LABEL_APP_INIT:
 
         // Into read4 state we go
         socketState_ = SOCKET_RECV_FRAMING;
-        appState_ = APP_READ_FRAME_SIZE;
+        appState_    = APP_READ_FRAME_SIZE;
 
         readBufferPos_ = 0;
 
@@ -744,10 +747,9 @@ LABEL_APP_INIT:
 
         // Try to work the socket right away
         // workSocket();
-
         return;
 
-    case APP_READ_FRAME_SIZE:
+    case APP_READ_FRAME_SIZE:// 2 -- 读取4字节数据帧头
         // We just read the request length
         // Double the buffer size until it is big enough
         if (readWant_ > readBufferSize_) {
@@ -1047,6 +1049,7 @@ void TNonblockingServer::handleEvent(THRIFT_SOCKET fd, short which) {
         if (clientConnection->getIOThreadNumber() == 0) {
             clientConnection->transition();
         } else {
+            // 如其名，就是通知iothread，具体是给该线程的pipefd发送this(connectionPtr)指针.
             if (!clientConnection->notifyIOThread()) {
                 GlobalOutput.perror("[ERROR] notifyIOThread failed on fresh connection, closing", errno);
                 returnConnection(clientConnection);
@@ -1512,6 +1515,7 @@ bool TNonblockingIOThread::notify(TNonblockingServer::TConnection* conn) {
 /* static */
 // iothread收到新的connection 根据 connection的状态 进行数据收发等处理 ，该逻辑由conection的
 // transition()函数完成, 第一部肯定是请求报文的read操作
+// iothread获得pipefd事件后调用，读取一个指针的大小，获得connection后调用transition.
 void TNonblockingIOThread::notifyHandler(evutil_socket_t fd, short which, void* v) {
     TNonblockingIOThread* ioThread = (TNonblockingIOThread*)v;
     assert(ioThread);

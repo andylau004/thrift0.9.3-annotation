@@ -53,7 +53,7 @@ uint32_t readAll(Transport_& trans, uint8_t* buf, uint32_t len) {
  * capable of either reading or writing, but not necessarily both.
  *TTransport是与底层数据传输紧密相关的传输层。每一种支持的底层传输方式都存在一个与之对应的TTransport。在这一层，数据是按字节流处理的，即传输层看到的是一个又一个的字节，并把这些字节按顺序发送和接收。TTransport并不了解它所传输的数据是什么类型，实际上传输层也不关心数据是什么类型，只需要按照字节方式对数据进行发送和接收即可。数据类型的解析在TProtocol这一层完成。
 
-  TTransport具体的有以下几个类：
+TTransport具体的有以下几个类：
   TSocket：使用阻塞的TCP socket进行数据传输，也是最常见的模式。
   THttpTransport：采用http传输协议进行数据传输。
   TFileTransport：文件（日志）传输类，允许client将文件传给server，允许server将收到的数据写到文件中。
